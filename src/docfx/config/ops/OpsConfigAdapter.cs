@@ -41,15 +41,6 @@ namespace Microsoft.Docs.Build
                 (BuildConfigApi, GetBuildConfig),
                 (MonikerDefinitionApi, _ => _opsAccessor.GetMonikerDefinition()),
                 (OpsMetadataApi, _ => GetOpsMetadata()),
-                (MetadataSchemaApi, url => _opsAccessor.GetMetadataSchema(GetValidationServiceParameters(url))),
-                (MarkdownValidationRulesApi, url => _opsAccessor.GetMarkdownValidationRules(GetValidationServiceParameters(url))),
-                (BuildValidationRulesApi, url => _opsAccessor.GetBuildValidationRules(GetValidationServiceParameters(url))),
-                (AllowlistsApi, _ => _opsAccessor.GetAllowlists()),
-                (SandboxEnabledModuleListApi, _ => _opsAccessor.GetSandboxEnabledModuleList()),
-                (RegressionAllAllowlistsApi, _ => _opsAccessor.GetRegressionAllAllowlists()),
-                (RegressionAllContentRulesApi, _ => _opsAccessor.GetRegressionAllContentRules()),
-                (RegressionAllBuildRulesApi, _ => _opsAccessor.GetRegressionAllBuildRules()),
-                (RegressionAllMetadataSchemaApi, _ => _opsAccessor.GetRegressionAllMetadataSchema()),
             };
         }
 
@@ -75,31 +66,15 @@ namespace Microsoft.Docs.Build
             var xrefEndpoint = queries["xref_endpoint"] ?? "";
             var xrefQueryTags = (queries["xref_query_tags"] ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).ToList();
 
-            var getDocsetInfo = s_docsetInfoCache.GetOrAdd(repository, new Lazy<Task<string>>(() => _opsAccessor.GetDocsetInfo(repository)));
-            var docsetInfo = await getDocsetInfo.Value;
-
-            var docsets = JsonConvert.DeserializeAnonymousType(
-                docsetInfo,
-                new[] { new { name = "", base_path = default(BasePath), site_name = "", product_name = "", use_template = false } });
+            var docsets = new[]
+            {
+                new { name = "engineering", base_path = new BasePath("/engineering"), site_name = "Docs", product_name = "MSDN", use_template = false },
+            };
 
             var docset = docsets.FirstOrDefault(d => string.Equals(d.name, name, StringComparison.OrdinalIgnoreCase));
             if (docset is null)
             {
                 throw Errors.Config.DocsetNotProvisioned(name).ToException();
-            }
-
-            var metadataServiceQueryParams = $"?repository_url={HttpUtility.UrlEncode(repository)}&branch={HttpUtility.UrlEncode(branch)}";
-
-            var xrefMapQueryParams = $"?site_name={docset.site_name}&branch_name={branch}&exclude_depot_name={docset.product_name}.{name}";
-            if (!string.IsNullOrEmpty(docset.base_path))
-            {
-                xrefQueryTags.Add(docset.base_path.ValueWithLeadingSlash);
-            }
-            var xrefMaps = new List<string>();
-            foreach (var tag in xrefQueryTags)
-            {
-                var links = await _opsAccessor.GetXrefMaps(tag, xrefEndpoint, xrefMapQueryParams);
-                xrefMaps.AddRange(links);
             }
 
             var xrefHostName = GetXrefHostName(docset.site_name, branch);
@@ -110,17 +85,10 @@ namespace Microsoft.Docs.Build
                 hostName = GetHostName(docset.site_name),
                 basePath = docset.base_path.ValueWithLeadingSlash,
                 xrefHostName,
-                monikerDefinition = MonikerDefinitionApi,
-                markdownValidationRules = $"{MarkdownValidationRulesApi}{metadataServiceQueryParams}",
-                buildValidationRules = $"{BuildValidationRulesApi}{metadataServiceQueryParams}",
                 metadataSchema = new[]
                 {
-                    OpsMetadataApi,
-                    $"{MetadataSchemaApi}{metadataServiceQueryParams}",
-                },
-                allowlists = AllowlistsApi,
-                sandboxEnabledModuleList = SandboxEnabledModuleListApi,
-                xref = xrefMaps,
+                    OpsMetadataApi
+                }
             });
         }
 
